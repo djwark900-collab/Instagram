@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Validation
+    function isValidUser(data) {
+      return data.username is string && data.username.size() >= 3 && data.username.size() <= 30
+        && data.displayName is string && data.displayName.size() <= 50
+        && (data.bio == null || (data.bio is string && data.bio.size() <= 160))
+        && data.createdAt == request.time
+        && data.keys().hasAll(['username', 'displayName', 'createdAt'])
+        && data.keys().size() <= 7; // Allowing for counters and photoURL
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // In real app, might restrict or paginate
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'bio', 'photoURL', 'followersCount', 'followingCount'])
+      );
+    }
+
+    // Post Validation
+    function isValidPost(data) {
+      return data.authorId == request.auth.uid
+        && data.imageUrl is string && data.imageUrl.size() <= 1000
+        && (data.caption == null || (data.caption is string && data.caption.size() <= 2200))
+        && data.createdAt == request.time
+        && data.likesCount is number
+        && data.keys().hasAll(['authorId', 'imageUrl', 'createdAt', 'likesCount'])
+        && data.keys().size() <= 5;
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(postId) && isValidPost(incoming());
+      allow update: if isSignedIn() && (
+        // Author updating caption
+        (isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasOnly(['caption'])) ||
+        // Anyone updating likesCount (simplified for demo, usually via cloud functions or transactions)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) && (incoming().likesCount == existing().likesCount + 1 || incoming().likesCount == existing().likesCount - 1))
+      );
+      allow delete: if isOwner(existing().authorId);
+      
+      // Likes subcollection
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId) && incoming().postId == postId && incoming().createdAt == request.time;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Followers/Following
+    match /users/{userId}/followers/{followerId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(followerId) && incoming().createdAt == request.time;
+      allow delete: if isOwner(followerId);
+    }
+
+    match /users/{userId}/following/{followedId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && incoming().createdAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+  }
+}

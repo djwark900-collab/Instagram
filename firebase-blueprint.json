@@ -1,0 +1,150 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Public profile information for a user.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Unique username" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "bio": { "type": "string", "description": "User bio" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "followersCount": { "type": "number", "description": "Number of followers" },
+        "followingCount": { "type": "number", "description": "Number of following" },
+        "isVerified": { "type": "boolean", "description": "Whether the user is verified" },
+        "isAdmin": { "type": "boolean", "description": "Whether the user is an admin" }
+      },
+      "required": ["username", "displayName", "createdAt"]
+    },
+    "Post": {
+      "title": "User Post",
+      "description": "A photo post shared by a user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "UID of the post creator" },
+        "imageUrl": { "type": "string", "description": "URL of the uploaded photo" },
+        "caption": { "type": "string", "description": "Post caption" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number", "description": "Number of likes" },
+        "commentsCount": { "type": "number", "description": "Number of comments" },
+        "isProduct": { "type": "boolean", "description": "Whether the post is a store product" },
+        "price": { "type": "number", "description": "Price of the product" }
+      },
+      "required": ["authorId", "imageUrl", "createdAt"]
+    },
+    "Comment": {
+      "title": "Post Comment",
+      "description": "A comment left by a user on a post.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "UID of the comment creator" },
+        "authorName": { "type": "string", "description": "Username of the author" },
+        "text": { "type": "string", "description": "The comment text" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "text", "createdAt"]
+    },
+    "Like": {
+      "title": "Post Like",
+      "description": "Records a user liking a post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "postId", "createdAt"]
+    },
+    "Follow": {
+      "title": "User Follow",
+      "description": "Records one user following another.",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followedId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followedId", "createdAt"]
+    },
+    "Save": {
+      "title": "Saved Post",
+      "description": "A post saved by a user.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "description": "ID of the saved post" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "createdAt"]
+    },
+    "Reel": {
+      "title": "Short Video Reel",
+      "description": "A vertical video reel shared by a user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "UID of the reel creator" },
+        "videoUrl": { "type": "string", "description": "URL of the uploaded video" },
+        "caption": { "type": "string", "description": "Reel caption" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number", "description": "Number of likes" },
+        "commentsCount": { "type": "number", "description": "Number of comments" }
+      },
+      "required": ["authorId", "videoUrl", "createdAt"]
+    },
+    "UserSettings": {
+      "title": "User Settings",
+      "description": "User preferences like language.",
+      "type": "object",
+      "properties": {
+        "language": { "type": "string", "enum": ["en", "es", "fr", "de", "ku"] }
+      },
+      "required": ["language"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "users/{userId}/settings/preferences": {
+      "schema": "UserSettings",
+      "description": "User configuration"
+    },
+    "posts/{postId}": {
+      "schema": "Post",
+      "description": "Global feed of posts"
+    },
+    "posts/{postId}/likes/{userId}": {
+      "schema": "Like",
+      "description": "Users who liked this post"
+    },
+    "posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on this post"
+    },
+    "reels/{reelId}": {
+      "schema": "Reel",
+      "description": "Global feed of video reels"
+    },
+    "reels/{reelId}/likes/{userId}": {
+      "schema": "Like",
+      "description": "Users who liked this reel"
+    },
+    "reels/{reelId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on this reel"
+    },
+    "users/{userId}/followers/{followerId}": {
+      "schema": "Follow",
+      "description": "Users following this user"
+    },
+    "users/{userId}/following/{followedId}": {
+      "schema": "Follow",
+      "description": "Users this user is following"
+    },
+    "users/{userId}/saves/{postId}": {
+      "schema": "Save",
+      "description": "Posts saved by this user"
+    }
+  }
+}

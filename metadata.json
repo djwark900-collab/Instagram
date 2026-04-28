@@ -1,0 +1,6 @@
+{
+  "name": "Pixelgram",
+  "description": "A creator-focused social platform for sharing photos, following friends, and discovering inspiration.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["photo_sharing", "social_networking", "authentication"]
+}

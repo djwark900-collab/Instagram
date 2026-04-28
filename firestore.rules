@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'djwark900@gmail.com' && request.auth.token.email_verified == true
+      );
+    }
+
+    function isValidUser(data) {
+      return isValidId(data.username) 
+        && data.username.size() >= 3 && data.username.size() <= 30
+        && data.displayName is string && data.displayName.size() <= 50
+        && (data.bio == null || (data.bio is string && data.bio.size() <= 160))
+        && (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 200000))
+        && data.createdAt == request.time
+        && data.followersCount is number
+        && data.followingCount is number
+        && (data.isVerified == null || data.isVerified is bool)
+        && (data.isAdmin == null || data.isAdmin is bool)
+        && data.keys().hasAll(['username', 'displayName', 'createdAt', 'followersCount', 'followingCount'])
+        && data.keys().size() <= 12;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming());
+      allow update: if (isOwner(userId) && (
+        // Action: Edit Profile
+        (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'bio', 'photoURL', 'isVerified']) 
+         && incoming().displayName is string && incoming().displayName.size() <= 50
+         && (incoming().bio == null || (incoming().bio is string && incoming().bio.size() <= 160))
+         && (incoming().photoURL == null || (incoming().photoURL is string && incoming().photoURL.size() <= 200000))
+         && (incoming().isVerified == null || incoming().isVerified is bool)) ||
+        // Action: Update Stats (Follow/Unfollow) - Owner can update both
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']) && (incoming().followersCount == existing().followersCount + 1 || incoming().followersCount == existing().followersCount - 1)) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followingCount']) && (incoming().followingCount == existing().followingCount + 1 || incoming().followingCount == existing().followingCount - 1))
+      )) || (isSignedIn() && (
+        // Action: Tier 2 - Others can update followersCount
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']) && (incoming().followersCount == existing().followersCount + 1 || incoming().followersCount == existing().followersCount - 1))
+      )) || (isAdmin() && (
+        // Action: Admin - can manage verification and admin status
+        incoming().diff(existing()).affectedKeys().hasOnly(['isVerified', 'isAdmin'])
+      ));
+    }
+
+    function isValidPost(data) {
+      return data.authorId == request.auth.uid
+        && data.imageUrl is string && data.imageUrl.size() <= 1500000
+        && (data.caption == null || (data.caption is string && data.caption.size() <= 2200))
+        && data.createdAt == request.time
+        && data.likesCount is number
+        && data.commentsCount is number
+        && (data.isProduct == null || data.isProduct is bool)
+        && (data.price == null || data.price is number)
+        && data.keys().hasAll(['authorId', 'imageUrl', 'createdAt', 'likesCount', 'commentsCount'])
+        && data.keys().size() <= 9;
+    }
+
+    function isValidComment(data) {
+      return data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 100
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 1000
+        && data.createdAt == request.time
+        && data.keys().hasAll(['authorId', 'authorName', 'text', 'createdAt'])
+        && data.keys().size() <= 5;
+    }
+
+    function isValidReel(data) {
+      return data.authorId == request.auth.uid
+        && data.videoUrl is string && data.videoUrl.size() <= 1500000
+        && (data.caption == null || (data.caption is string && data.caption.size() <= 2200))
+        && data.createdAt == request.time
+        && data.likesCount is number
+        && data.commentsCount is number
+        && data.keys().hasAll(['authorId', 'videoUrl', 'createdAt', 'likesCount', 'commentsCount'])
+        && data.keys().size() <= 7;
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(postId) && isValidPost(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasOnly(['caption'])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) && (incoming().likesCount == existing().likesCount + 1 || incoming().likesCount == existing().likesCount - 1)) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount']) && (incoming().commentsCount == existing().commentsCount + 1 || incoming().commentsCount == existing().commentsCount - 1))
+      );
+      allow delete: if isOwner(existing().authorId) || isAdmin();
+      
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId) && incoming().postId == postId && incoming().createdAt == request.time;
+        allow delete: if isOwner(userId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidComment(incoming()) && isValidId(commentId);
+        allow delete: if isOwner(existing().authorId) || isOwner(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
+      }
+    }
+
+    match /reels/{reelId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(reelId) && isValidReel(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().authorId) && incoming().diff(existing()).affectedKeys().hasOnly(['caption'])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) && (incoming().likesCount == existing().likesCount + 1 || incoming().likesCount == existing().likesCount - 1)) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount']) && (incoming().commentsCount == existing().commentsCount + 1 || incoming().commentsCount == existing().commentsCount - 1))
+      );
+      allow delete: if isOwner(existing().authorId) || isAdmin();
+
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId) && incoming().postId == reelId && incoming().createdAt == request.time;
+        allow delete: if isOwner(userId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidComment(incoming()) && isValidId(commentId);
+        allow delete: if isOwner(existing().authorId) || isOwner(get(/databases/$(database)/documents/reels/$(reelId)).data.authorId);
+      }
+    }
+
+    match /users/{userId}/followers/{followerId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(followerId) && incoming().createdAt == request.time;
+      allow delete: if isOwner(followerId);
+    }
+
+    match /users/{userId}/following/{followedId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && incoming().createdAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/saves/{postId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && incoming().postId == postId && incoming().createdAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+
+    function isValidUserSettings(data) {
+      return data.language is string && data.language.size() == 2
+        && data.keys().hasAll(['language'])
+        && data.keys().size() == 1;
+    }
+
+    match /users/{userId}/settings/preferences {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserSettings(incoming());
+      allow update: if isOwner(userId) && isValidUserSettings(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['language'])
+      );
+      allow delete: if isOwner(userId);
+    }
+  }
+}
